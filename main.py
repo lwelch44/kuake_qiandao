@@ -1,3 +1,4 @@
+
 import smtplib
 from datetime import datetime
 from email.mime.multipart import MIMEMultipart
@@ -16,21 +17,12 @@ if kps is None or sign is None or vcode is None:
     logger.error("请设置 QUARK_KPS 或者 QUARK_SIGN 或者 QUARK_VCODE")
     raise ValueError("请设置 QUARK_KPS 或者 QUARK_SIGN 或者 QUARK_VCODE")
 
-# 邮箱通知
-SMTP_SERVER = os.getenv("SMTP_SERVER")
-SMTP_PORT = os.getenv("SMTP_PORT")  # 587 TLS 端口，使用 465 代表 SSL
-EMAIL = os.getenv("EMAIL")  # 你的邮箱
-PASSWORD = os.getenv("PASSWORD")  # 你的 SMTP 授权码（不是邮箱密码）
-
-# 测试环境
-# SMTP_SERVER = "smtp.163.com"
-# SMTP_PORT = 25
-# EMAIL = "xxx@163.com"  # 你的邮箱
-# PASSWORD = "xxx"  # 你的 SMTP 授权码（不是邮箱密码）
+# Push Plus 通知配置
+PUSHPLUS_TOKEN = os.getenv("PUSHPLUS_TOKEN", "ff015b049b064d1bbf8e064729e90e4e")  # 默认提供的token
 
 config_is_ok = False
 
-if SMTP_SERVER is not None and SMTP_PORT is not None and EMAIL is not None and PASSWORD is not None:
+if PUSHPLUS_TOKEN:
     config_is_ok = True
 
 
@@ -63,25 +55,33 @@ def human_unit(bytes_: int) -> str:
     return f"{bytes_:.2f} {units[i]}"
 
 
-def send_email(body: str):
-    SUBJECT = "夸克网盘自动签到"
+def send_notification(body: str):
+    """使用Push Plus发送通知"""
+    if not PUSHPLUS_TOKEN:
+        logger.error("Push Plus Token未配置，无法发送通知")
+        return
+        
+    title = "夸克网盘自动签到"
+    url = "http://www.pushplus.plus/send"
+    
     try:
-        # 创建邮件对象
-        msg = MIMEMultipart()
-        msg["From"] = EMAIL
-        msg["To"] = EMAIL
-        msg["Subject"] = SUBJECT
-        # 添加邮件正文
-        msg.attach(MIMEText(body, "plain"))
-
-        # 连接 SMTP 服务器
-        server = smtplib.SMTP(SMTP_SERVER, int(SMTP_PORT))
-        server.starttls()
-        server.login(EMAIL, PASSWORD)  # 登录 SMTP 服务器
-        server.sendmail(EMAIL, EMAIL, msg.as_string())  # 发送邮件
-        server.quit()  # 关闭连接
+        params = {
+            "token": PUSHPLUS_TOKEN,
+            "title": title,
+            "content": body
+        }
+        
+        response = httpx.get(url, params=params)
+        response.raise_for_status()
+        
+        result = response.json()
+        if result.get("code") == 200:
+            logger.info("Push Plus通知发送成功")
+        else:
+            logger.error(f"Push Plus通知发送失败: {result.get('msg', '未知错误')}")
+            
     except Exception as e:
-        logger.error(f"邮件发送失败: {e}")
+        logger.error(f"发送通知时发生错误: {e}")
 
 
 def user_info():
@@ -119,7 +119,7 @@ def user_info():
                            f"使用百分比：{data['use_capacity'] / data['total_capacity'] * 100:.2f}%")
         logger.info(notify_message)
         if config_is_ok:
-            send_email(notify_message)
+            send_notification(notify_message)
 
 
 def checkin():
@@ -140,9 +140,11 @@ def checkin():
         if response.json()["code"] != 0:
             logger.warning(response.json()["message"])
         else:
-            logger.success(
-                f"签到成功，获得容量: {human_unit(response.json()['data']['sign_daily_reward'])}"
-            )
+            reward_msg = f"签到成功，获得容量: {human_unit(response.json()['data']['sign_daily_reward'])}"
+            logger.success(reward_msg)
+            # 发送签到成功通知
+            if config_is_ok:
+                send_notification(reward_msg)
     else:
         logger.warning(f"已经签到，请勿重复签到")
 
