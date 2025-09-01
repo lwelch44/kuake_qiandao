@@ -18,7 +18,7 @@ if kps is None or sign is None or vcode is None:
 
 # 邮箱通知
 SMTP_SERVER = os.getenv("SMTP_SERVER")
-SMTP_PORT = os.getenv("SMTP_PORT", default=25)  # 587 TLS 端口，使用 465 代表 SSL
+SMTP_PORT = os.getenv("SMTP_PORT")  # 587 TLS 端口，使用 465 代表 SSL
 EMAIL = os.getenv("EMAIL")  # 你的邮箱
 PASSWORD = os.getenv("PASSWORD")  # 你的 SMTP 授权码（不是邮箱密码）
 
